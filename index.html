@@ -81,7 +81,7 @@
 
     <p>
         <label>
-            成功判定時間 T_success [秒]:
+            成功判定時間 [秒]:
             <input id="t-success" type="number" value="180" />
         </label>
     </p>
@@ -288,9 +288,6 @@ def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
             return pyodide;
         })();
 
-        /*-----------------------------------
-          計算ボタン
-        -----------------------------------*/
         document.getElementById("calcBtn").addEventListener("click", async () => {
             const err = document.getElementById("error");
             const out = document.getElementById("result");
@@ -316,7 +313,13 @@ def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
 
                 const T_succ = Number(document.getElementById("t-success").value);
                 if (!Number.isFinite(T_succ)) {
-                    throw new Error("成功判定時間 T_success には数値を入力してください。");
+                    throw new Error("成功判定時間には数値を入力してください。");
+                }
+
+                // ★ ここを追加：T_success が他のイベント時間より前になっていないかチェック
+                const maxFailTime = Math.max(...T_fail);
+                if (T_succ < maxFailTime) {
+                    throw new Error("成功判定時間は、全てのイベントの判定時刻以上にしてください。");
                 }
 
                 // 閾値のモードを確認
@@ -326,7 +329,7 @@ def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
                 if (mode === "hours") {
                     const hours = Number(document.getElementById("threshold-hours").value);
                     if (!Number.isFinite(hours) || hours < 0) {
-                        throw new Error("閾値時間（時間）は 0 以上の数で指定してください。");
+                        throw new Error("閾値時間（チケット枚数）は 0 以上の数で指定してください。");
                     }
                     thresholdSeconds = hours * 3600;
                 } else if (mode === "detail") {
