@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
-    <title>合計時間が閾値以下で成功する確率（Python / Pyodide）</title>
+    <title>TL成功確率計算(超ヒマリ論)</title>
     <style>
         body {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -18,39 +18,45 @@
             margin-bottom: 0.5em;
         }
 
-        label {
-            display: block;
-            margin-top: 0.75em;
-            font-weight: 600;
-        }
-
-        input[type="text"],
-        input[type="number"] {
-            width: 100%;
-            max-width: 420px;
-            padding: 4px 6px;
-            box-sizing: border-box;
-            font-size: 0.9rem;
-        }
-
-        .row {
+        .param-row {
+            border: 1px solid #ccc;
+            padding: 8px;
+            margin: 6px 0;
             display: flex;
             flex-wrap: wrap;
-            gap: 16px;
-            align-items: flex-start;
-            margin-top: 0.75em;
+            gap: 12px;
+            align-items: center;
         }
 
-        .row>div {
-            flex: 1 1 180px;
-            min-width: 180px;
+        .param-row input[type="number"] {
+            width: 110px;
+            padding: 3px 5px;
         }
 
         button {
-            margin-top: 1.2em;
-            padding: 6px 16px;
-            font-size: 0.95rem;
             cursor: pointer;
+        }
+
+        #add-param-btn {
+            margin-top: 0.5em;
+            padding: 4px 10px;
+            font-size: 0.9rem;
+        }
+
+        #calcBtn {
+            margin-top: 1.2em;
+            padding: 10px 24px;
+            /* ボタンの高さ・横幅方向の余白 */
+            font-size: 1.0rem;
+            /* 文字サイズ */
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid #666;
+            background-color: #f0f0f0;
+        }
+
+        #calcBtn:hover {
+            background-color: #e0e0e0;
         }
 
         #result {
@@ -64,96 +70,198 @@
             font-weight: 600;
             white-space: pre-line;
         }
-
-        small {
-            color: #555;
-        }
     </style>
 </head>
 
 <body>
-    <h1>合計時間が閾値以下で成功する確率（解析 DP, Python on Pyodide）</h1>
+    <h1>TLの成功確率計算</h1>
+
+    <div id="param-container"></div>
+    <button id="add-param-btn"> + 行を追加</button>
 
     <p>
-        下記のパラメータを入力して「計算する」を押すと、<br>
-        あなたの Python 関数 <code>prob_within_threshold_analytic</code> をそのままブラウザ上で実行し、<br>
-        「合計時間が閾値以下で成功する確率」をパーセントで表示します。
+        <label>
+            成功判定時間 T_success [秒]:
+            <input id="t-success" type="number" value="180" />
+        </label>
     </p>
 
-    <label for="pList">
-        成功確率リスト p_list [%]（カンマ区切り）
-    </label>
-    <input id="pList" type="text" value="75, 75, 25, 2.67" />
-    <small>例: <code>75, 75, 25, 2.67</code></small>
+    <!-- 閾値の指定方法を2通り用意 -->
+    <fieldset style="margin-top:1em;">
+        <legend>閾値時間の指定方法</legend>
 
-    <label for="tList">
-        判定時刻リスト T_list [秒]（カンマ区切り）
-    </label>
-    <input id="tList" type="text" value="10, 25, 50, 180, 180" />
-    <small>例: <code>10, 25, 50, 180, 180</code>（最後が「全部成功した場合の時間」）</small>
-
-    <div class="row">
-        <div>
-            <label for="threshold">
-                閾値時間 [秒]
+        <p>
+            <label>
+                <input type="radio" name="th-mode" value="hours" checked>
+                チケット単位で指定
             </label>
-            <input id="threshold" type="number" value="25200" />
-            <small>例: 7時間 → <code>7 × 3600 = 25200</code></small>
-        </div>
-        <div>
-            <label for="fps">
-                fps（1秒あたりのフレーム数）
-            </label>
-            <input id="fps" type="number" value="30" />
-            <small>例: <code>30</code></small>
-        </div>
-    </div>
+            <input id="threshold-hours" type="number" value="7" step="1" min="0" style="width:80px;">
+            <span>枚以内に成功</span>
+        </p>
 
-    <button id="calcBtn">計算する（Python 実行）</button>
+        <p>
+            <label>
+                <input type="radio" name="th-mode" value="detail">
+                詳細に指定 [時:分:秒]
+            </label>
+            <input id="threshold-detail" type="text" value="7:00:00" style="width:120px;">
+            <br>
+            <small>例: 7時間 → 7:00:00, 3分30秒 → 0:03:30 または 03:30, 90秒 → 90</small>
+        </p>
+    </fieldset>
+
+    <p>
+        <label>
+            fps（1秒あたりのフレーム数）:
+            <input id="fps" type="number" value="1" />
+            （※基本的にはいじらなくても大丈夫なはずです）
+        </label>
+    </p>
+
+    <button id="calcBtn">計算する</button>
 
     <div id="error"></div>
     <div id="result"></div>
 
-    <!-- Pyodide 読み込み -->
+    <!-- Pyodide -->
     <script src="https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js"></script>
     <script>
-        // Pyodide + numpy をロードして、Python 関数を定義する
-        let pyodideReadyPromise = (async () => {
+        // クリック時に全選択
+        function makeSelectOnClick(input) {
+            input.addEventListener("focus", function () {
+                this.select();
+            });
+            input.addEventListener("mouseup", e => e.preventDefault());
+        }
+
+        // "hh:mm:ss", "mm:ss", "ss", "ss.sss" を秒に変換
+        function parseTimeToSeconds(str) {
+            const s = str.trim();
+            if (!s) throw new Error("閾値時間を入力してください。");
+
+            const parts = s.split(":").map(v => v.trim());
+            let h = 0, m = 0, sec = 0;
+
+            if (parts.length === 1) {
+                // "ss" または "ss.sss"
+                sec = Number(parts[0]);
+            } else if (parts.length === 2) {
+                // "mm:ss"
+                m = Number(parts[0]);
+                sec = Number(parts[1]);
+            } else if (parts.length === 3) {
+                // "hh:mm:ss"
+                h = Number(parts[0]);
+                m = Number(parts[1]);
+                sec = Number(parts[2]);
+            } else {
+                throw new Error("閾値時間は hh:mm:ss / mm:ss / ss 形式で入力してください。");
+            }
+
+            if (![h, m, sec].every(x => Number.isFinite(x))) {
+                throw new Error("閾値時間に数値以外が含まれています。");
+            }
+            if (h < 0 || m < 0 || sec < 0) {
+                throw new Error("閾値時間は0以上で指定してください。");
+            }
+
+            return h * 3600 + m * 60 + sec;
+        }
+
+        const paramContainer = document.getElementById("param-container");
+        const addParamBtn = document.getElementById("add-param-btn");
+        let rowCount = 0;
+
+        function addParamRow(defaultP = "", defaultT = "") {
+            rowCount += 1;
+
+            const row = document.createElement("div");
+            row.className = "param-row";
+
+            const label = document.createElement("span");
+            label.textContent = `イベント ${rowCount}`;
+
+            const pLabel = document.createElement("span");
+            pLabel.textContent = "成功確率[%]";
+
+            const pInput = document.createElement("input");
+            pInput.type = "number";
+            pInput.step = "0.01";
+            pInput.value = defaultP;
+            pInput.className = "input-p";
+            makeSelectOnClick(pInput);
+
+            const tLabel = document.createElement("span");
+            tLabel.textContent = "判定時刻[秒]";
+
+            const tInput = document.createElement("input");
+            tInput.type = "number";
+            tInput.step = "0.001";
+            tInput.value = defaultT;
+            tInput.className = "input-t";
+            makeSelectOnClick(tInput);
+
+            const delBtn = document.createElement("button");
+            delBtn.textContent = "削除";
+            delBtn.style.padding = "3px 8px";
+            delBtn.addEventListener("click", () => {
+                row.remove();
+            });
+
+            row.appendChild(label);
+            row.appendChild(pLabel);
+            row.appendChild(pInput);
+            row.appendChild(tLabel);
+            row.appendChild(tInput);
+            row.appendChild(delBtn);
+
+            paramContainer.appendChild(row);
+        }
+
+        // 「行を追加」ボタン
+        addParamBtn.addEventListener("click", () => {
+            addParamRow();
+        });
+
+        // デフォルト行
+        addParamRow(75, 10);
+        addParamRow(75, 25);
+        addParamRow(25, 50);
+        addParamRow(2.67, 180);
+
+        makeSelectOnClick(document.getElementById("t-success"));
+        makeSelectOnClick(document.getElementById("threshold-hours"));
+        makeSelectOnClick(document.getElementById("threshold-detail"));
+        makeSelectOnClick(document.getElementById("fps"));
+
+        /*-----------------------------------
+          Pyodide 読み込み & Python 関数
+        -----------------------------------*/
+        let pyodideReady = (async () => {
             const pyodide = await loadPyodide({
                 indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.0/full/",
             });
             await pyodide.loadPackage("numpy");
 
-            // ここに、あなたの Python コードをそのまま書く
             const pythonCode = `
 import numpy as np
 
 def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
-    """
-    合計時間が threshold 以下で成功する確率を解析的（有限DP）に計算する。
-    T_list, threshold は float 秒単位でよい。
-    内部では 1/fps 秒刻み（フレーム単位）に変換して DP を行う。
-    """
     p_list = np.array(p_list, dtype=float)
-    # パーセントから割合に変更
     p_list *= 0.01
     T_list = np.array(T_list, dtype=float)
 
-    # 秒 → フレームへ変換
     T_frames = np.round(T_list * fps).astype(int)
     threshold_f = int(round(threshold * fps))
 
-    T_fail = T_frames[:-1]     # 失敗フレーム
-    T_succ = T_frames[-1]      # 成功フレーム
+    T_fail = T_frames[:-1]
+    T_succ = T_frames[-1]
 
-    # 閾値が成功フレームより小さければ 0
     if threshold_f < T_succ:
         return 0.0
 
-    # 1チャレンジ成功確率
     q_succ = np.prod(p_list)
 
-    # 各イベントで失敗する確率 f_k
     q = []
     prefix = 1.0
     for p in p_list:
@@ -162,10 +270,8 @@ def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
     q.append(q_succ)
     q = np.array(q, dtype=float)
 
-    # DP の最大範囲
     max_T = threshold_f - T_succ
 
-    # x[t] = P(W = t)
     x = np.zeros(max_T + 1, dtype=float)
     x[0] = q_succ
 
@@ -182,63 +288,75 @@ def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
             return pyodide;
         })();
 
-        function parseNumberList(str) {
-            if (!str.trim()) return [];
-            const replaced = str.replace(/、/g, ",");
-            return replaced
-                .split(",")
-                .map((s) => s.trim())
-                .filter((s) => s.length > 0)
-                .map((s) => Number(s));
-        }
-
+        /*-----------------------------------
+          計算ボタン
+        -----------------------------------*/
         document.getElementById("calcBtn").addEventListener("click", async () => {
-            const errorElem = document.getElementById("error");
-            const resultElem = document.getElementById("result");
-            errorElem.textContent = "";
-            resultElem.textContent = "";
+            const err = document.getElementById("error");
+            const out = document.getElementById("result");
+            err.textContent = "";
+            out.textContent = "";
 
             try {
-                const pListStr = document.getElementById("pList").value;
-                const tListStr = document.getElementById("tList").value;
-                const thresholdStr = document.getElementById("threshold").value;
-                const fpsStr = document.getElementById("fps").value;
+                const rows = [...document.querySelectorAll(".param-row")];
+                if (rows.length === 0) throw new Error("イベント行を追加してください。");
 
-                const pList = parseNumberList(pListStr);
-                const tList = parseNumberList(tListStr);
-                const threshold = Number(thresholdStr);
-                const fps = Number(fpsStr || 30);
+                const pList = [];
+                const T_fail = [];
 
-                if (!pList.length || !tList.length) {
-                    throw new Error("p_list と T_list を入力してください。");
+                for (const row of rows) {
+                    const p = Number(row.querySelector(".input-p").value);
+                    const t = Number(row.querySelector(".input-t").value);
+                    if (!Number.isFinite(p) || !Number.isFinite(t))
+                        throw new Error("成功確率および判定時刻には数値を入力してください。");
+
+                    pList.push(p);
+                    T_fail.push(t);
                 }
-                if (tList.length !== pList.length + 1) {
-                    throw new Error("T_list の要素数は p_list より 1 つ多くしてください。");
+
+                const T_succ = Number(document.getElementById("t-success").value);
+                if (!Number.isFinite(T_succ)) {
+                    throw new Error("成功判定時間 T_success には数値を入力してください。");
                 }
-                if (!(threshold > 0)) {
-                    throw new Error("閾値時間は正の数で指定してください。");
+
+                // 閾値のモードを確認
+                const mode = document.querySelector('input[name="th-mode"]:checked')?.value;
+                let thresholdSeconds;
+
+                if (mode === "hours") {
+                    const hours = Number(document.getElementById("threshold-hours").value);
+                    if (!Number.isFinite(hours) || hours < 0) {
+                        throw new Error("閾値時間（時間）は 0 以上の数で指定してください。");
+                    }
+                    thresholdSeconds = hours * 3600;
+                } else if (mode === "detail") {
+                    const thresholdStr = document.getElementById("threshold-detail").value;
+                    thresholdSeconds = parseTimeToSeconds(thresholdStr);
+                } else {
+                    throw new Error("閾値時間の指定方法を選択してください。");
                 }
+
+                const fps = Number(document.getElementById("fps").value);
                 if (!(fps > 0)) {
-                    throw new Error("fps は正の数で指定してください。");
+                    throw new Error("fps は 0 より大きい数で指定してください。");
                 }
 
-                const pyodide = await pyodideReadyPromise;
+                const T_list = [...T_fail, T_succ];
 
-                // JS → Python にそのまま値を渡して関数を呼ぶ
+                const pyodide = await pyodideReady;
                 pyodide.globals.set("p_list_js", pList);
-                pyodide.globals.set("T_list_js", tList);
-                pyodide.globals.set("threshold_js", threshold);
+                pyodide.globals.set("T_list_js", T_list);
+                pyodide.globals.set("threshold_js", thresholdSeconds);
                 pyodide.globals.set("fps_js", fps);
 
                 const prob = await pyodide.runPythonAsync(`
 prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js)
 `);
-                const probPercent = prob * 100.0;
 
-                resultElem.textContent =
-                    "P(total_time ≤ threshold) = " + probPercent.toFixed(5) + " %";
+                out.textContent = `成功確率 = ${(prob * 100).toFixed(5)} %`;
+
             } catch (e) {
-                errorElem.textContent = String(e.message || e);
+                err.textContent = e.message || e;
             }
         });
     </script>
