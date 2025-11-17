@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>合計時間が閾値以下で成功する確率（Python / Pyodide）</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            max-width: 960px;
+            margin: 20px auto;
+            padding: 0 16px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            margin-bottom: 0.5em;
+        }
+
+        label {
+            display: block;
+            margin-top: 0.75em;
+            font-weight: 600;
+        }
+
+        input[type="text"],
+        input[type="number"] {
+            width: 100%;
+            max-width: 420px;
+            padding: 4px 6px;
+            box-sizing: border-box;
+            font-size: 0.9rem;
+        }
+
+        .row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 16px;
+            align-items: flex-start;
+            margin-top: 0.75em;
+        }
+
+        .row>div {
+            flex: 1 1 180px;
+            min-width: 180px;
+        }
+
+        button {
+            margin-top: 1.2em;
+            padding: 6px 16px;
+            font-size: 0.95rem;
+            cursor: pointer;
+        }
+
+        #result {
+            margin-top: 1.5em;
+            font-weight: 700;
+        }
+
+        #error {
+            margin-top: 0.75em;
+            color: #c00;
+            font-weight: 600;
+            white-space: pre-line;
+        }
+
+        small {
+            color: #555;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>合計時間が閾値以下で成功する確率（解析 DP, Python on Pyodide）</h1>
+
+    <p>
+        下記のパラメータを入力して「計算する」を押すと、<br>
+        あなたの Python 関数 <code>prob_within_threshold_analytic</code> をそのままブラウザ上で実行し、<br>
+        「合計時間が閾値以下で成功する確率」をパーセントで表示します。
+    </p>
+
+    <label for="pList">
+        成功確率リスト p_list [%]（カンマ区切り）
+    </label>
+    <input id="pList" type="text" value="75, 75, 25, 2.67" />
+    <small>例: <code>75, 75, 25, 2.67</code></small>
+
+    <label for="tList">
+        判定時刻リスト T_list [秒]（カンマ区切り）
+    </label>
+    <input id="tList" type="text" value="10, 25, 50, 180, 180" />
+    <small>例: <code>10, 25, 50, 180, 180</code>（最後が「全部成功した場合の時間」）</small>
+
+    <div class="row">
+        <div>
+            <label for="threshold">
+                閾値時間 [秒]
+            </label>
+            <input id="threshold" type="number" value="25200" />
+            <small>例: 7時間 → <code>7 × 3600 = 25200</code></small>
+        </div>
+        <div>
+            <label for="fps">
+                fps（1秒あたりのフレーム数）
+            </label>
+            <input id="fps" type="number" value="30" />
+            <small>例: <code>30</code></small>
+        </div>
+    </div>
+
+    <button id="calcBtn">計算する（Python 実行）</button>
+
+    <div id="error"></div>
+    <div id="result"></div>
+
+    <!-- Pyodide 読み込み -->
+    <script src="https://cdn.jsdelivr.net/pyodide/v0.26.0/full/pyodide.js"></script>
+    <script>
+        // Pyodide + numpy をロードして、Python 関数を定義する
+        let pyodideReadyPromise = (async () => {
+            const pyodide = await loadPyodide({
+                indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.0/full/",
+            });
+            await pyodide.loadPackage("numpy");
+
+            // ここに、あなたの Python コードをそのまま書く
+            const pythonCode = `
+import numpy as np
+
+def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
+    """
+    合計時間が threshold 以下で成功する確率を解析的（有限DP）に計算する。
+    T_list, threshold は float 秒単位でよい。
+    内部では 1/fps 秒刻み（フレーム単位）に変換して DP を行う。
+    """
+    p_list = np.array(p_list, dtype=float)
+    # パーセントから割合に変更
+    p_list *= 0.01
+    T_list = np.array(T_list, dtype=float)
+
+    # 秒 → フレームへ変換
+    T_frames = np.round(T_list * fps).astype(int)
+    threshold_f = int(round(threshold * fps))
+
+    T_fail = T_frames[:-1]     # 失敗フレーム
+    T_succ = T_frames[-1]      # 成功フレーム
+
+    # 閾値が成功フレームより小さければ 0
+    if threshold_f < T_succ:
+        return 0.0
+
+    # 1チャレンジ成功確率
+    q_succ = np.prod(p_list)
+
+    # 各イベントで失敗する確率 f_k
+    q = []
+    prefix = 1.0
+    for p in p_list:
+        q.append(prefix * (1.0 - p))
+        prefix *= p
+    q.append(q_succ)
+    q = np.array(q, dtype=float)
+
+    # DP の最大範囲
+    max_T = threshold_f - T_succ
+
+    # x[t] = P(W = t)
+    x = np.zeros(max_T + 1, dtype=float)
+    x[0] = q_succ
+
+    for t in range(1, max_T + 1):
+        s = 0.0
+        for Tn, qn in zip(T_fail, q):
+            if t >= Tn:
+                s += qn * x[t - Tn]
+        x[t] = s
+
+    return float(x.sum())
+`;
+            await pyodide.runPythonAsync(pythonCode);
+            return pyodide;
+        })();
+
+        function parseNumberList(str) {
+            if (!str.trim()) return [];
+            const replaced = str.replace(/、/g, ",");
+            return replaced
+                .split(",")
+                .map((s) => s.trim())
+                .filter((s) => s.length > 0)
+                .map((s) => Number(s));
+        }
+
+        document.getElementById("calcBtn").addEventListener("click", async () => {
+            const errorElem = document.getElementById("error");
+            const resultElem = document.getElementById("result");
+            errorElem.textContent = "";
+            resultElem.textContent = "";
+
+            try {
+                const pListStr = document.getElementById("pList").value;
+                const tListStr = document.getElementById("tList").value;
+                const thresholdStr = document.getElementById("threshold").value;
+                const fpsStr = document.getElementById("fps").value;
+
+                const pList = parseNumberList(pListStr);
+                const tList = parseNumberList(tListStr);
+                const threshold = Number(thresholdStr);
+                const fps = Number(fpsStr || 30);
+
+                if (!pList.length || !tList.length) {
+                    throw new Error("p_list と T_list を入力してください。");
+                }
+                if (tList.length !== pList.length + 1) {
+                    throw new Error("T_list の要素数は p_list より 1 つ多くしてください。");
+                }
+                if (!(threshold > 0)) {
+                    throw new Error("閾値時間は正の数で指定してください。");
+                }
+                if (!(fps > 0)) {
+                    throw new Error("fps は正の数で指定してください。");
+                }
+
+                const pyodide = await pyodideReadyPromise;
+
+                // JS → Python にそのまま値を渡して関数を呼ぶ
+                pyodide.globals.set("p_list_js", pList);
+                pyodide.globals.set("T_list_js", tList);
+                pyodide.globals.set("threshold_js", threshold);
+                pyodide.globals.set("fps_js", fps);
+
+                const prob = await pyodide.runPythonAsync(`
+prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js)
+`);
+                const probPercent = prob * 100.0;
+
+                resultElem.textContent =
+                    "P(total_time ≤ threshold) = " + probPercent.toFixed(5) + " %";
+            } catch (e) {
+                errorElem.textContent = String(e.message || e);
+            }
+        });
+    </script>
+</body>
+
+</html>
