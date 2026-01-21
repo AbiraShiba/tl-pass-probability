@@ -44,6 +44,88 @@ const paramContainer = document.getElementById("param-container");
 const addParamBtn = document.getElementById("add-param-btn");
 let rowCount = 0;
 
+let urlUpdateTimer = null;
+
+function scheduleUrlUpdate() {
+    if (urlUpdateTimer) {
+        clearTimeout(urlUpdateTimer);
+    }
+    urlUpdateTimer = setTimeout(updateUrlState, 250);
+}
+
+function collectState() {
+    const rows = [...document.querySelectorAll(".param-row")];
+    const events = rows.map(row => ({
+        p: row.querySelector(".input-p").value,
+        t: row.querySelector(".input-t").value,
+    }));
+
+    const mode = document.querySelector('input[name="th-mode"]:checked')?.value || "hours";
+
+    return {
+        events,
+        tSuccess: document.getElementById("t-success").value,
+        mode,
+        thresholdHours: document.getElementById("threshold-hours").value,
+        thresholdDetail: document.getElementById("threshold-detail").value,
+        fps: document.getElementById("fps").value,
+    };
+}
+
+function updateUrlState() {
+    const state = collectState();
+    const encoded = encodeURIComponent(JSON.stringify(state));
+    const url = new URL(window.location.href);
+    url.searchParams.set("state", encoded);
+    window.history.replaceState(null, "", url.toString());
+}
+
+function applyState(state) {
+    if (!state || typeof state !== "object") return false;
+
+    paramContainer.innerHTML = "";
+    rowCount = 0;
+
+    const events = Array.isArray(state.events) ? state.events : [];
+    if (events.length === 0) {
+        addParamRow(75, 10);
+    } else {
+        events.forEach(ev => addParamRow(ev.p ?? "", ev.t ?? ""));
+    }
+
+    document.getElementById("t-success").value = state.tSuccess ?? "180";
+    document.getElementById("threshold-hours").value = state.thresholdHours ?? "7";
+    document.getElementById("threshold-detail").value = state.thresholdDetail ?? "7:00:00";
+    document.getElementById("fps").value = state.fps ?? "1";
+
+    const mode = state.mode === "detail" ? "detail" : "hours";
+    const modeInput = document.querySelector(`input[name="th-mode"][value="${mode}"]`);
+    if (modeInput) modeInput.checked = true;
+
+    return true;
+}
+
+function loadStateFromUrl() {
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get("state");
+    if (!raw) return false;
+
+    try {
+        const parsed = JSON.parse(decodeURIComponent(raw));
+        return applyState(parsed);
+    } catch {
+        return false;
+    }
+}
+
+function wireInputListeners(root = document) {
+    const inputs = root.querySelectorAll("input");
+    inputs.forEach(input => {
+        input.addEventListener("input", scheduleUrlUpdate);
+        input.addEventListener("change", scheduleUrlUpdate);
+    });
+}
+
 function addParamRow(defaultP = "", defaultT = "") {
     rowCount += 1;
 
@@ -78,6 +160,7 @@ function addParamRow(defaultP = "", defaultT = "") {
     delBtn.style.padding = "3px 8px";
     delBtn.addEventListener("click", () => {
         row.remove();
+        scheduleUrlUpdate();
     });
 
     row.appendChild(label);
@@ -88,6 +171,8 @@ function addParamRow(defaultP = "", defaultT = "") {
     row.appendChild(delBtn);
 
     paramContainer.appendChild(row);
+    wireInputListeners(row);
+    scheduleUrlUpdate();
 }
 
 // 「行を追加」ボタン
@@ -95,16 +180,16 @@ addParamBtn.addEventListener("click", () => {
     addParamRow();
 });
 
-// デフォルト行
-addParamRow(75, 10);
-addParamRow(75, 25);
-addParamRow(25, 50);
-addParamRow(2.67, 180);
+const restored = loadStateFromUrl();
+if (!restored) {
+    addParamRow(75, 10);
+}
 
 makeSelectOnClick(document.getElementById("t-success"));
 makeSelectOnClick(document.getElementById("threshold-hours"));
 makeSelectOnClick(document.getElementById("threshold-detail"));
 makeSelectOnClick(document.getElementById("fps"));
+wireInputListeners();
 
 /*-----------------------------------
   Pyodide 読み込み & Python 関数
