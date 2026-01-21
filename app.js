@@ -56,6 +56,7 @@ function collectState() {
     return {
         events,
         tSuccess: document.getElementById("t-success").value,
+        restartDelay: document.getElementById("restart-delay").value,
         mode,
         thresholdHours: document.getElementById("threshold-hours").value,
         thresholdDetail: document.getElementById("threshold-detail").value,
@@ -85,8 +86,9 @@ function applyState(state) {
     }
 
     document.getElementById("t-success").value = state.tSuccess ?? "180";
-    document.getElementById("threshold-hours").value = state.thresholdHours ?? "7";
-    document.getElementById("threshold-detail").value = state.thresholdDetail ?? "7:00:00";
+    document.getElementById("restart-delay").value = state.restartDelay ?? "0";
+    document.getElementById("threshold-hours").value = state.thresholdHours ?? "1";
+    document.getElementById("threshold-detail").value = state.thresholdDetail ?? "1:00:00";
     document.getElementById("fps").value = state.fps ?? "1";
 
     const mode = state.mode === "detail" ? "detail" : "hours";
@@ -166,6 +168,7 @@ if (!restored) {
 }
 
 makeSelectOnClick(document.getElementById("t-success"));
+makeSelectOnClick(document.getElementById("restart-delay"));
 makeSelectOnClick(document.getElementById("threshold-hours"));
 makeSelectOnClick(document.getElementById("threshold-detail"));
 makeSelectOnClick(document.getElementById("fps"));
@@ -182,15 +185,16 @@ let pyodideReady = (async () => {
     const pythonCode = `
 import numpy as np
 
-def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30):
+def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30, restart=0):
     p_list = np.array(p_list, dtype=float)
     p_list *= 0.01
     T_list = np.array(T_list, dtype=float)
 
     T_frames = np.round(T_list * fps).astype(int)
     threshold_f = int(round(threshold * fps))
+    restart_f = int(round(restart * fps))
 
-    T_fail = T_frames[:-1]
+    T_fail = T_frames[:-1] + restart_f
     T_succ = T_frames[-1]
 
     if threshold_f < T_succ:
@@ -252,6 +256,11 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
             throw new Error("成功判定時間には数値を入力してください。");
         }
 
+        const restartDelay = Number(document.getElementById("restart-delay").value);
+        if (!Number.isFinite(restartDelay) || restartDelay < 0) {
+            throw new Error("リスタート時間は 0 以上の数で指定してください。");
+        }
+
         // 成功判定が他のイベント時間より前にならないようにする
         const maxFailTime = Math.max(...T_fail);
         if (T_succ < maxFailTime) {
@@ -260,14 +269,14 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
 
         // 閾値のモードを確認
         const mode = document.querySelector('input[name="th-mode"]:checked')?.value;
-        let thresholdSeconds;
+        let ticketCount = null;
+        let thresholdSeconds = null;
 
         if (mode === "hours") {
-            const hours = Number(document.getElementById("threshold-hours").value);
-            if (!Number.isFinite(hours) || hours < 0) {
-                throw new Error("閾値時間（チケット枚数）は 0 以上の数で指定してください。");
+            ticketCount = Number(document.getElementById("threshold-hours").value);
+            if (!Number.isFinite(ticketCount) || ticketCount < 0) {
+                throw new Error("チケット枚数は 0 以上の数で指定してください。");
             }
-            thresholdSeconds = hours * 3600;
         } else if (mode === "detail") {
             const thresholdStr = document.getElementById("threshold-detail").value;
             thresholdSeconds = parseTimeToSeconds(thresholdStr);
@@ -276,8 +285,8 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
         }
 
         const fps = Number(document.getElementById("fps").value);
-        if (!(fps > 0)) {
-            throw new Error("fps は 0 より大きい数で指定してください。");
+        if (!(fps >= 1)) {
+            throw new Error("fps は 1 より大きい数で指定してください。");
         }
 
         const T_list = [...T_fail, T_succ];
@@ -285,12 +294,23 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
         const pyodide = await pyodideReady;
         pyodide.globals.set("p_list_js", pList);
         pyodide.globals.set("T_list_js", T_list);
-        pyodide.globals.set("threshold_js", thresholdSeconds);
         pyodide.globals.set("fps_js", fps);
+        pyodide.globals.set("restart_js", restartDelay);
 
-        const prob = await pyodide.runPythonAsync(`
-prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js)
+        let prob;
+        if (mode === "hours") {
+            const ticketSeconds = 3600;
+            pyodide.globals.set("threshold_js", ticketSeconds);
+            const pSingle = await pyodide.runPythonAsync(`
+prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js, restart_js)
 `);
+            prob = 1 - Math.pow(1 - pSingle, ticketCount);
+        } else {
+            pyodide.globals.set("threshold_js", thresholdSeconds);
+            prob = await pyodide.runPythonAsync(`
+prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js, restart_js)
+`);
+        }
 
         out.textContent = `成功確率 = ${(prob * 100).toFixed(5)} %`;
         updateUrlState();
