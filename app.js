@@ -44,15 +44,6 @@ const paramContainer = document.getElementById("param-container");
 const addParamBtn = document.getElementById("add-param-btn");
 let rowCount = 0;
 
-let urlUpdateTimer = null;
-
-function scheduleUrlUpdate() {
-    if (urlUpdateTimer) {
-        clearTimeout(urlUpdateTimer);
-    }
-    urlUpdateTimer = setTimeout(updateUrlState, 250);
-}
-
 function collectState() {
     const rows = [...document.querySelectorAll(".param-row")];
     const events = rows.map(row => ({
@@ -118,14 +109,6 @@ function loadStateFromUrl() {
     }
 }
 
-function wireInputListeners(root = document) {
-    const inputs = root.querySelectorAll("input");
-    inputs.forEach(input => {
-        input.addEventListener("input", scheduleUrlUpdate);
-        input.addEventListener("change", scheduleUrlUpdate);
-    });
-}
-
 function addParamRow(defaultP = "", defaultT = "") {
     rowCount += 1;
 
@@ -139,20 +122,20 @@ function addParamRow(defaultP = "", defaultT = "") {
     pLabel.textContent = "成功確率 [%]";
 
     const pInput = document.createElement("input");
-    pInput.type = "number";
-    pInput.step = "0.01";
+    pInput.type = "text";
+    pInput.inputMode = "decimal";
     pInput.value = defaultP;
-    pInput.className = "input-p";
+    pInput.className = "input-p number-input";
     makeSelectOnClick(pInput);
 
     const tLabel = document.createElement("span");
     tLabel.textContent = "判定時刻 [秒]";
 
     const tInput = document.createElement("input");
-    tInput.type = "number";
-    tInput.step = "0.001";
+    tInput.type = "text";
+    tInput.inputMode = "decimal";
     tInput.value = defaultT;
-    tInput.className = "input-t";
+    tInput.className = "input-t number-input";
     makeSelectOnClick(tInput);
 
     const delBtn = document.createElement("button");
@@ -160,7 +143,6 @@ function addParamRow(defaultP = "", defaultT = "") {
     delBtn.style.padding = "3px 8px";
     delBtn.addEventListener("click", () => {
         row.remove();
-        scheduleUrlUpdate();
     });
 
     row.appendChild(label);
@@ -171,8 +153,6 @@ function addParamRow(defaultP = "", defaultT = "") {
     row.appendChild(delBtn);
 
     paramContainer.appendChild(row);
-    wireInputListeners(row);
-    scheduleUrlUpdate();
 }
 
 // 「行を追加」ボタン
@@ -189,7 +169,6 @@ makeSelectOnClick(document.getElementById("t-success"));
 makeSelectOnClick(document.getElementById("threshold-hours"));
 makeSelectOnClick(document.getElementById("threshold-detail"));
 makeSelectOnClick(document.getElementById("fps"));
-wireInputListeners();
 
 /*-----------------------------------
   Pyodide 読み込み & Python 関数
@@ -314,6 +293,7 @@ prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js)
 `);
 
         out.textContent = `成功確率 = ${(prob * 100).toFixed(5)} %`;
+        updateUrlState();
     } catch (e) {
         err.textContent = e.message || e;
     }
