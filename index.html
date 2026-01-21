@@ -16,7 +16,7 @@
     <p>
         <label>
             成功判定時間 [秒]:
-            <input id="t-success" type="number" value="180" />
+            <input id="t-success" class="number-input" type="text" inputmode="decimal" value="180" />
         </label>
     </p>
 
@@ -29,7 +29,7 @@
                 <input type="radio" name="th-mode" value="hours" checked>
                 チケット単位で指定
             </label>
-            <input id="threshold-hours" type="number" value="7" step="1" min="0" style="width:80px;">
+            <input id="threshold-hours" class="number-input" type="text" inputmode="numeric" value="7" style="width:80px;">
             <span>枚以内に成功</span>
         </p>
 
@@ -47,7 +47,7 @@
     <p>
         <label>
             fps（1秒あたりのフレーム数）:
-            <input id="fps" type="number" value="1" />
+            <input id="fps" class="number-input" type="text" inputmode="decimal" value="1" />
             （※基本的にはいじらなくても大丈夫なはずです）
         </label>
     </p>
