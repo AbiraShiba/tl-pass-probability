@@ -10,6 +10,13 @@
 <body>
     <h1>TLの成功確率計算</h1>
 
+    <p>
+        <label>
+            リスタート時間 [秒]:
+            <input id="restart-delay" class="number-input" type="text" inputmode="decimal" value="0" />
+        </label>
+    </p>
+
     <div id="param-container"></div>
     <button id="add-param-btn"> + 行を追加</button>
 
@@ -29,16 +36,16 @@
                 <input type="radio" name="th-mode" value="hours" checked>
                 チケット単位で指定
             </label>
-            <input id="threshold-hours" class="number-input" type="text" inputmode="numeric" value="7" style="width:80px;">
+            <input id="threshold-hours" class="number-input" type="text" inputmode="numeric" value="1" style="width:80px;">
             <span>枚以内に成功</span>
         </p>
 
         <p>
             <label>
                 <input type="radio" name="th-mode" value="detail">
-                詳細に指定 [時:分:秒]
+                時間で指定 [時:分:秒]
             </label>
-            <input id="threshold-detail" type="text" value="7:00:00" style="width:120px;">
+            <input id="threshold-detail" type="text" value="1:00:00" style="width:120px;">
             <br>
             <small>例: 7時間 → 7:00:00, 3分30秒 → 0:03:30 または 03:30, 90秒 → 90</small>
         </p>
