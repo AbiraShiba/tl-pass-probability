@@ -52,6 +52,10 @@ h1 {
     letter-spacing: 0.02em;
 }
 
+.page-title-row input {
+    width: min(420px, 100%);
+}
+
 p,
 fieldset {
     margin: 0 0 12px;
@@ -127,6 +131,14 @@ fieldset {
     font-size: 1.05rem;
 }
 
+.squad-title label {
+    font-weight: 600;
+}
+
+.squad-name-input {
+    width: min(220px, 100%);
+}
+
 .squad-actions {
     display: flex;
     gap: 6px;
@@ -140,7 +152,6 @@ fieldset {
 }
 
 .add-event-btn {
-    margin-top: 6px;
     font-size: 0.9rem;
     background: #fff3d8;
     color: #1a1a1a;
@@ -149,6 +160,18 @@ fieldset {
 
 .add-event-btn:hover {
     background: #ffe4b0;
+}
+
+.squad-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+    align-items: center;
+    margin-top: 6px;
+}
+
+.success-time {
+    margin: 0;
 }
 
 fieldset {

@@ -40,6 +40,10 @@ function parseTimeToSeconds(str) {
     return h * 3600 + m * 60 + sec;
 }
 
+const DEFAULT_EVENT = { p: "75", t: "10" };
+const DEFAULT_SUCCESS_TIME = "90";
+const BASE_PAGE_TITLE = "TL成功確率計算";
+
 const squadTabBar = document.getElementById("squad-tab-bar");
 const squadPanels = document.getElementById("squad-panels");
 const addSquadBtn = document.getElementById("add-squad-btn") || (() => {
@@ -58,25 +62,37 @@ function nextSquadName() {
     return `部隊 ${squadCounter}`;
 }
 
+function normalizeSquadName(rawName, fallback) {
+    const trimmed = (rawName ?? "").trim();
+    return trimmed || fallback || "部隊";
+}
+
+function applyPageTitle(rawTitle) {
+    const trimmed = (rawTitle ?? "").trim();
+    document.title = trimmed ? `${trimmed} | ${BASE_PAGE_TITLE}` : BASE_PAGE_TITLE;
+}
+
 function createSquadData(name, events, tSuccess) {
     const safeEvents = Array.isArray(events) ? events : [];
     const safeName = name || nextSquadName();
     return {
         name: safeName,
         events: safeEvents,
-        tSuccess: tSuccess ?? "180",
+        tSuccess: tSuccess ?? DEFAULT_SUCCESS_TIME,
     };
 }
 
 function readSquadsFromDOM() {
     const panels = [...document.querySelectorAll(".squad-panel")];
-    return panels.map(panel => {
+    return panels.map((panel, index) => {
+        const nameInput = panel.querySelector(".squad-name-input");
+        const fallbackName = panel.dataset.name || `部隊 ${index + 1}`;
         const events = [...panel.querySelectorAll(".param-row")].map(row => ({
             p: row.querySelector(".input-p").value,
             t: row.querySelector(".input-t").value,
         }));
         return {
-            name: panel.dataset.name || "部隊",
+            name: normalizeSquadName(nameInput?.value, fallbackName),
             tSuccess: panel.querySelector(".input-t-success")?.value ?? "",
             events,
         };
@@ -116,6 +132,7 @@ function addEventRow(container, defaultP = "", defaultT = "") {
     pInput.type = "text";
     pInput.inputMode = "decimal";
     pInput.value = defaultP;
+    pInput.placeholder = DEFAULT_EVENT.p;
     pInput.className = "input-p number-input";
     makeSelectOnClick(pInput);
 
@@ -126,6 +143,7 @@ function addEventRow(container, defaultP = "", defaultT = "") {
     tInput.type = "text";
     tInput.inputMode = "decimal";
     tInput.value = defaultT;
+    tInput.placeholder = DEFAULT_EVENT.t;
     tInput.className = "input-t number-input";
     makeSelectOnClick(tInput);
 
@@ -187,28 +205,44 @@ function setActiveSquad(index) {
 }
 
 function renderSquads(squads, activeIndex = 0) {
-    const safeSquads = squads.length ? squads : [createSquadData(null, [{ p: "", t: "" }], "180")];
+    const safeSquads = squads.length ? squads : [createSquadData(null, [DEFAULT_EVENT], DEFAULT_SUCCESS_TIME)];
     const tabButtons = [];
     squadPanels.innerHTML = "";
 
     safeSquads.forEach((squad, index) => {
+        const fallbackName = `部隊 ${index + 1}`;
+        const squadName = normalizeSquadName(squad.name, fallbackName);
         const tabBtn = document.createElement("button");
         tabBtn.type = "button";
         tabBtn.className = "tab-button";
-        tabBtn.textContent = squad.name;
+        tabBtn.textContent = squadName;
         tabBtn.addEventListener("click", () => setActiveSquad(index));
         tabButtons.push(tabBtn);
 
         const panel = document.createElement("div");
         panel.className = "squad-panel";
-        panel.dataset.name = squad.name;
+        panel.dataset.name = squadName;
 
         const header = document.createElement("div");
         header.className = "squad-header";
 
         const title = document.createElement("div");
         title.className = "squad-title";
-        title.textContent = squad.name;
+        const titleLabel = document.createElement("label");
+        titleLabel.textContent = "部隊名:";
+        const titleInput = document.createElement("input");
+        titleInput.type = "text";
+        titleInput.value = squadName;
+        titleInput.className = "squad-name-input";
+        makeSelectOnClick(titleInput);
+        titleInput.addEventListener("input", () => {
+            const nextName = normalizeSquadName(titleInput.value, fallbackName);
+            tabBtn.textContent = nextName;
+            panel.dataset.name = nextName;
+            updateUrlState();
+        });
+        titleLabel.appendChild(titleInput);
+        title.appendChild(titleLabel);
 
         const actions = document.createElement("div");
         actions.className = "squad-actions";
@@ -272,7 +306,7 @@ function renderSquads(squads, activeIndex = 0) {
         eventContainer.className = "param-container";
         panel.appendChild(eventContainer);
 
-        const events = squad.events.length > 0 ? squad.events : [{ p: "", t: "" }];
+        const events = squad.events.length > 0 ? squad.events : [DEFAULT_EVENT];
         events.forEach(ev => addEventRow(eventContainer, ev.p ?? "", ev.t ?? ""));
 
         const addEventBtn = document.createElement("button");
@@ -280,20 +314,24 @@ function renderSquads(squads, activeIndex = 0) {
         addEventBtn.className = "add-event-btn";
         addEventBtn.textContent = "+ 行を追加";
         addEventBtn.addEventListener("click", () => addEventRow(eventContainer));
-        panel.appendChild(addEventBtn);
 
         const successWrap = document.createElement("p");
+        successWrap.className = "success-time";
         const successLabel = document.createElement("label");
         successLabel.textContent = "成功判定時間 [秒]:";
         const successInput = document.createElement("input");
         successInput.type = "text";
         successInput.inputMode = "decimal";
-        successInput.value = squad.tSuccess ?? "180";
+        successInput.value = squad.tSuccess ?? DEFAULT_SUCCESS_TIME;
         successInput.className = "input-t-success number-input";
         makeSelectOnClick(successInput);
         successLabel.appendChild(successInput);
         successWrap.appendChild(successLabel);
-        panel.appendChild(successWrap);
+        const squadFooter = document.createElement("div");
+        squadFooter.className = "squad-footer";
+        squadFooter.appendChild(addEventBtn);
+        squadFooter.appendChild(successWrap);
+        panel.appendChild(squadFooter);
 
         squadPanels.appendChild(panel);
     });
@@ -308,6 +346,7 @@ function collectState() {
     const mode = document.querySelector('input[name="th-mode"]:checked')?.value || "hours";
 
     return {
+        pageTitle: document.getElementById("page-title")?.value ?? "",
         squads: readSquadsFromDOM(),
         activeIndex: activeSquadIndex,
         restartDelay: document.getElementById("restart-delay").value,
@@ -332,7 +371,7 @@ function applyState(state) {
     const squads = Array.isArray(state.squads) ? state.squads : [];
     if (squads.length === 0) {
         squadCounter = 0;
-        renderSquads([createSquadData(null, [{ p: 75, t: 10 }], "180")], 0);
+        renderSquads([createSquadData(null, [DEFAULT_EVENT], DEFAULT_SUCCESS_TIME)], 0);
     } else {
         squadCounter = squads.length;
         renderSquads(
@@ -345,6 +384,12 @@ function applyState(state) {
     document.getElementById("threshold-hours").value = state.thresholdHours ?? "1";
     document.getElementById("threshold-detail").value = state.thresholdDetail ?? "1:00:00";
     document.getElementById("fps").value = state.fps ?? "1";
+
+    const pageTitleInput = document.getElementById("page-title");
+    if (pageTitleInput) {
+        pageTitleInput.value = state.pageTitle ?? "";
+        applyPageTitle(pageTitleInput.value);
+    }
 
     const mode = state.mode === "detail" ? "detail" : "hours";
     const modeInput = document.querySelector(`input[name="th-mode"][value="${mode}"]`);
@@ -368,14 +413,24 @@ function loadStateFromUrl() {
 
 addSquadBtn.addEventListener("click", () => {
     const data = readSquadsFromDOM();
-    const newSquad = createSquadData(null, [{ p: "", t: "" }], "180");
+    const newSquad = createSquadData(null, [DEFAULT_EVENT], DEFAULT_SUCCESS_TIME);
     data.push(newSquad);
     renderSquads(data, data.length - 1);
 });
 
 const restored = loadStateFromUrl();
 if (!restored) {
-    renderSquads([createSquadData(null, [{ p: 75, t: 10 }], "180")], 0);
+    renderSquads([createSquadData(null, [DEFAULT_EVENT], DEFAULT_SUCCESS_TIME)], 0);
+}
+
+const pageTitleInput = document.getElementById("page-title");
+if (pageTitleInput) {
+    makeSelectOnClick(pageTitleInput);
+    applyPageTitle(pageTitleInput.value);
+    pageTitleInput.addEventListener("input", () => {
+        applyPageTitle(pageTitleInput.value);
+        updateUrlState();
+    });
 }
 
 makeSelectOnClick(document.getElementById("restart-delay"));
