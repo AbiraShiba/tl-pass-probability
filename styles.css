@@ -57,6 +57,100 @@ fieldset {
     margin: 0 0 12px;
 }
 
+.squad-area {
+    margin-bottom: 14px;
+}
+
+.tab-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.tab-button {
+    border-radius: 999px;
+    border: 1px solid #d6c9bb;
+    background: #fffdf9;
+    color: #1a1a1a;
+    padding: 6px 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 120ms ease, transform 120ms ease, box-shadow 120ms ease;
+}
+
+.tab-button.active {
+    background: #1a1a1a;
+    color: #fff8ea;
+    border-color: #1a1a1a;
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.18);
+}
+
+.ghost-btn {
+    border-radius: 999px;
+    border: 1px dashed #d6c9bb;
+    background: #fff8ea;
+    color: #1a1a1a;
+    padding: 6px 14px;
+}
+
+.ghost-btn:hover {
+    background: #ffe9c7;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.08);
+    color: #1a1a1a;
+}
+
+.squad-panel {
+    display: none;
+    border: 1px solid #e6ddd3;
+    padding: 12px 14px 8px;
+    border-radius: 14px;
+    background: var(--panel-2);
+}
+
+.squad-panel.active {
+    display: block;
+}
+
+.squad-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.squad-title {
+    font-weight: 700;
+    font-size: 1.05rem;
+}
+
+.squad-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.squad-actions button {
+    padding: 4px 10px;
+    font-size: 0.85rem;
+    border-radius: 999px;
+}
+
+.add-event-btn {
+    margin-top: 6px;
+    font-size: 0.9rem;
+    background: #fff3d8;
+    color: #1a1a1a;
+    border-color: #d8c7a5;
+}
+
+.add-event-btn:hover {
+    background: #ffe4b0;
+}
+
 fieldset {
     border: 1px solid #e6ddd3;
     padding: 14px 14px 6px;
@@ -118,6 +212,27 @@ input[type="text"]:focus {
     padding: 5px 7px;
 }
 
+.param-row .event-move-up,
+.param-row .event-move-down {
+    padding: 3px 8px;
+    font-size: 0.85rem;
+    background: #fff8ea;
+    color: #1a1a1a;
+    border-color: #d8c7a5;
+}
+
+.param-row .event-move-up:hover,
+.param-row .event-move-down:hover {
+    background: #ffe4b0;
+}
+
+.param-row button:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
 button {
     cursor: pointer;
     border-radius: 999px;
@@ -131,20 +246,7 @@ button {
 button:hover {
     transform: translateY(-1px);
     box-shadow: 0 8px 16px rgba(0, 0, 0, 0.18);
-    background: #0d0d0d;
-}
-
-#add-param-btn {
-    margin-top: 0.5em;
-    margin-bottom: 0.9em;
-    font-size: 0.9rem;
-    background: #fff3d8;
-    color: #1a1a1a;
-    border-color: #d8c7a5;
-}
-
-#add-param-btn:hover {
-    background: #ffe4b0;
+    background: #2a2a2a;
 }
 
 #calcBtn {
