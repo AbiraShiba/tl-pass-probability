@@ -1,7 +1,9 @@
 import numpy as np
 
 
-def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
+def calculate_tl_stats_distinct_optimized(
+    scenarios: list[dict], threshold_hours: float, fps=1
+):
     """
     段階ごとにイベント構成が異なる場合のTL統計計算（ループ統合・高速化版）
 
@@ -13,7 +15,7 @@ def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
             ]
     """
 
-    # --- 1. 前処理: 計算に必要なデータを全て事前計算して配列に格納 ---
+    # --- 前処理: 計算に必要なデータを全て事前計算して配列に格納 ---
     stage_params = []
     total_min_frames = 0
     total_expected_time = 0.0
@@ -50,7 +52,7 @@ def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
             {"q_succ": q_success, "q_fails": q_fails, "t_fails": T_fail_frames}
         )
 
-    # --- 2. 制限時間の判定 ---
+    # --- 制限時間の判定 ---
     threshold_sec = threshold_hours * 3600
     threshold_frame = int(round(threshold_sec * fps))
     max_waste_frames = threshold_frame - total_min_frames
@@ -58,7 +60,7 @@ def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
     if max_waste_frames < 0:
         return 0.0, total_expected_time
 
-    # --- 3. DP計算 (ループ統合版) ---
+    # --- DP計算 (ループ統合版) ---
     num_stages = len(scenarios)
 
     # dp[stage][t]
@@ -73,14 +75,14 @@ def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
         for i in range(num_stages):
             params = stage_params[i]
 
-            # --- A. リトライ処理 (過去からの復帰) ---
+            # --- リトライ処理 ---
             # 各ステージ固有の失敗時間・確率を使って計算
             # dp[i][t] += dp[i][t - fail_time] * fail_prob
             for Tn, qn in zip(params["t_fails"], params["q_fails"]):
                 if t >= Tn:
                     dp[i][t] += qn * dp[i][t - Tn]
 
-            # --- B. 段階移行 (前のステージ完了 -> 次のステージへ) ---
+            # --- 段階移行 (前のステージ完了 -> 次のステージへ) ---
             # ステージ0には「前のステージ」がないので、i > 0 の時のみ
             if i > 0:
                 # 前のステージ(i-1)が今(t)終わった確率 × 今のステージ(i)がストレート成功する確率
@@ -91,6 +93,15 @@ def calculate_tl_stats_distinct_optimized(scenarios, threshold_hours, fps=1):
                 dp[i][t] += prev_finish_prob * current_straight_succ
 
     # 最終段階の累積確率
-    prob_within_time = np.sum(dp[num_stages - 1])
+    prob_within_time = np.sum(dp[-1])
 
     return prob_within_time, total_expected_time
+
+
+scenarios = [
+    {"probs": [7, 5], "times": [10, 25], "success_time": 90},  # 1凸目
+    {"probs": [5, 5], "times": [5, 5], "success_time": 60},  # 2凸目
+]
+threshold_hours = 1.0
+prob, _ = calculate_tl_stats_distinct_optimized(scenarios, threshold_hours)
+print(prob * 100)
