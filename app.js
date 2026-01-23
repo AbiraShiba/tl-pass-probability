@@ -40,85 +40,74 @@ function parseTimeToSeconds(str) {
     return h * 3600 + m * 60 + sec;
 }
 
-const paramContainer = document.getElementById("param-container");
-const addParamBtn = document.getElementById("add-param-btn");
-let rowCount = 0;
+const squadTabBar = document.getElementById("squad-tab-bar");
+const squadPanels = document.getElementById("squad-panels");
+const addSquadBtn = document.getElementById("add-squad-btn") || (() => {
+    const btn = document.createElement("button");
+    btn.id = "add-squad-btn";
+    btn.className = "ghost-btn";
+    btn.textContent = "+ 部隊を追加";
+    squadTabBar?.appendChild(btn);
+    return btn;
+})();
+let squadCounter = 0;
+let activeSquadIndex = 0;
 
-function collectState() {
-    const rows = [...document.querySelectorAll(".param-row")];
-    const events = rows.map(row => ({
-        p: row.querySelector(".input-p").value,
-        t: row.querySelector(".input-t").value,
-    }));
+function nextSquadName() {
+    squadCounter += 1;
+    return `部隊 ${squadCounter}`;
+}
 
-    const mode = document.querySelector('input[name="th-mode"]:checked')?.value || "hours";
-
+function createSquadData(name, events, tSuccess) {
+    const safeEvents = Array.isArray(events) ? events : [];
+    const safeName = name || nextSquadName();
     return {
-        events,
-        tSuccess: document.getElementById("t-success").value,
-        restartDelay: document.getElementById("restart-delay").value,
-        mode,
-        thresholdHours: document.getElementById("threshold-hours").value,
-        thresholdDetail: document.getElementById("threshold-detail").value,
-        fps: document.getElementById("fps").value,
+        name: safeName,
+        events: safeEvents,
+        tSuccess: tSuccess ?? "180",
     };
 }
 
-function updateUrlState() {
-    const state = collectState();
-    const encoded = encodeURIComponent(JSON.stringify(state));
-    const url = new URL(window.location.href);
-    url.searchParams.set("state", encoded);
-    window.history.replaceState(null, "", url.toString());
+function readSquadsFromDOM() {
+    const panels = [...document.querySelectorAll(".squad-panel")];
+    return panels.map(panel => {
+        const events = [...panel.querySelectorAll(".param-row")].map(row => ({
+            p: row.querySelector(".input-p").value,
+            t: row.querySelector(".input-t").value,
+        }));
+        return {
+            name: panel.dataset.name || "部隊",
+            tSuccess: panel.querySelector(".input-t-success")?.value ?? "",
+            events,
+        };
+    });
 }
 
-function applyState(state) {
-    if (!state || typeof state !== "object") return false;
-
-    paramContainer.innerHTML = "";
-    rowCount = 0;
-
-    const events = Array.isArray(state.events) ? state.events : [];
-    if (events.length === 0) {
-        addParamRow(75, 10);
-    } else {
-        events.forEach(ev => addParamRow(ev.p ?? "", ev.t ?? ""));
-    }
-
-    document.getElementById("t-success").value = state.tSuccess ?? "180";
-    document.getElementById("restart-delay").value = state.restartDelay ?? "0";
-    document.getElementById("threshold-hours").value = state.thresholdHours ?? "1";
-    document.getElementById("threshold-detail").value = state.thresholdDetail ?? "1:00:00";
-    document.getElementById("fps").value = state.fps ?? "1";
-
-    const mode = state.mode === "detail" ? "detail" : "hours";
-    const modeInput = document.querySelector(`input[name="th-mode"][value="${mode}"]`);
-    if (modeInput) modeInput.checked = true;
-
-    return true;
+function updateEventLabels(container) {
+    const rows = [...container.querySelectorAll(".param-row")];
+    rows.forEach((row, index) => {
+        const label = row.querySelector(".event-label");
+        if (label) label.textContent = `イベント ${index + 1}`;
+    });
 }
 
-function loadStateFromUrl() {
-    const url = new URL(window.location.href);
-    const raw = url.searchParams.get("state");
-    if (!raw) return false;
-
-    try {
-        const parsed = JSON.parse(decodeURIComponent(raw));
-        return applyState(parsed);
-    } catch {
-        return false;
-    }
+function updateEventControls(container) {
+    const rows = [...container.querySelectorAll(".param-row")];
+    rows.forEach((row, index) => {
+        const upBtn = row.querySelector(".event-move-up");
+        const downBtn = row.querySelector(".event-move-down");
+        if (upBtn) upBtn.disabled = index === 0;
+        if (downBtn) downBtn.disabled = index === rows.length - 1;
+    });
 }
 
-function addParamRow(defaultP = "", defaultT = "") {
-    rowCount += 1;
-
+function addEventRow(container, defaultP = "", defaultT = "") {
     const row = document.createElement("div");
     row.className = "param-row";
 
     const label = document.createElement("span");
-    label.textContent = `イベント ${rowCount}`;
+    label.className = "event-label";
+    label.textContent = "イベント";
 
     const pLabel = document.createElement("span");
     pLabel.textContent = "成功確率 [%]";
@@ -145,6 +134,34 @@ function addParamRow(defaultP = "", defaultT = "") {
     delBtn.style.padding = "3px 8px";
     delBtn.addEventListener("click", () => {
         row.remove();
+        updateEventLabels(container);
+        updateEventControls(container);
+    });
+
+    const moveUpBtn = document.createElement("button");
+    moveUpBtn.type = "button";
+    moveUpBtn.className = "event-move-up";
+    moveUpBtn.textContent = "↑";
+    moveUpBtn.addEventListener("click", () => {
+        const prev = row.previousElementSibling;
+        if (prev) {
+            container.insertBefore(row, prev);
+            updateEventLabels(container);
+            updateEventControls(container);
+        }
+    });
+
+    const moveDownBtn = document.createElement("button");
+    moveDownBtn.type = "button";
+    moveDownBtn.className = "event-move-down";
+    moveDownBtn.textContent = "↓";
+    moveDownBtn.addEventListener("click", () => {
+        const next = row.nextElementSibling;
+        if (next) {
+            container.insertBefore(next, row);
+            updateEventLabels(container);
+            updateEventControls(container);
+        }
     });
 
     row.appendChild(label);
@@ -152,22 +169,215 @@ function addParamRow(defaultP = "", defaultT = "") {
     row.appendChild(pInput);
     row.appendChild(tLabel);
     row.appendChild(tInput);
+    row.appendChild(moveUpBtn);
+    row.appendChild(moveDownBtn);
     row.appendChild(delBtn);
 
-    paramContainer.appendChild(row);
+    container.appendChild(row);
+    updateEventLabels(container);
+    updateEventControls(container);
 }
 
-// 「行を追加」ボタン
-addParamBtn.addEventListener("click", () => {
-    addParamRow();
+function setActiveSquad(index) {
+    activeSquadIndex = index;
+    const tabs = [...squadTabBar.querySelectorAll(".tab-button")];
+    const panels = [...squadPanels.querySelectorAll(".squad-panel")];
+    tabs.forEach((tab, i) => tab.classList.toggle("active", i === index));
+    panels.forEach((panel, i) => panel.classList.toggle("active", i === index));
+}
+
+function renderSquads(squads, activeIndex = 0) {
+    const safeSquads = squads.length ? squads : [createSquadData(null, [{ p: "", t: "" }], "180")];
+    const tabButtons = [];
+    squadPanels.innerHTML = "";
+
+    safeSquads.forEach((squad, index) => {
+        const tabBtn = document.createElement("button");
+        tabBtn.type = "button";
+        tabBtn.className = "tab-button";
+        tabBtn.textContent = squad.name;
+        tabBtn.addEventListener("click", () => setActiveSquad(index));
+        tabButtons.push(tabBtn);
+
+        const panel = document.createElement("div");
+        panel.className = "squad-panel";
+        panel.dataset.name = squad.name;
+
+        const header = document.createElement("div");
+        header.className = "squad-header";
+
+        const title = document.createElement("div");
+        title.className = "squad-title";
+        title.textContent = squad.name;
+
+        const actions = document.createElement("div");
+        actions.className = "squad-actions";
+
+        const moveLeftBtn = document.createElement("button");
+        moveLeftBtn.type = "button";
+        moveLeftBtn.textContent = "← 入れ替え";
+        moveLeftBtn.disabled = index === 0;
+        moveLeftBtn.addEventListener("click", () => {
+            const data = readSquadsFromDOM();
+            if (index > 0) {
+                [data[index - 1], data[index]] = [data[index], data[index - 1]];
+                renderSquads(data, index - 1);
+            }
+        });
+
+        const moveRightBtn = document.createElement("button");
+        moveRightBtn.type = "button";
+        moveRightBtn.textContent = "入れ替え →";
+        moveRightBtn.disabled = index === safeSquads.length - 1;
+        moveRightBtn.addEventListener("click", () => {
+            const data = readSquadsFromDOM();
+            if (index < data.length - 1) {
+                [data[index], data[index + 1]] = [data[index + 1], data[index]];
+                renderSquads(data, index + 1);
+            }
+        });
+
+        const copyBtn = document.createElement("button");
+        copyBtn.type = "button";
+        copyBtn.textContent = "コピー";
+        copyBtn.addEventListener("click", () => {
+            const data = readSquadsFromDOM();
+            const copied = { ...data[index], name: nextSquadName() };
+            data.splice(index + 1, 0, copied);
+            renderSquads(data, index + 1);
+        });
+
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.textContent = "削除";
+        delBtn.addEventListener("click", () => {
+            const data = readSquadsFromDOM();
+            if (data.length <= 1) {
+                return;
+            }
+            data.splice(index, 1);
+            const nextIndex = Math.max(0, Math.min(index, data.length - 1));
+            renderSquads(data, nextIndex);
+        });
+
+        actions.appendChild(moveLeftBtn);
+        actions.appendChild(moveRightBtn);
+        actions.appendChild(copyBtn);
+        actions.appendChild(delBtn);
+        header.appendChild(title);
+        header.appendChild(actions);
+        panel.appendChild(header);
+
+        const eventContainer = document.createElement("div");
+        eventContainer.className = "param-container";
+        panel.appendChild(eventContainer);
+
+        const events = squad.events.length > 0 ? squad.events : [{ p: "", t: "" }];
+        events.forEach(ev => addEventRow(eventContainer, ev.p ?? "", ev.t ?? ""));
+
+        const addEventBtn = document.createElement("button");
+        addEventBtn.type = "button";
+        addEventBtn.className = "add-event-btn";
+        addEventBtn.textContent = "+ 行を追加";
+        addEventBtn.addEventListener("click", () => addEventRow(eventContainer));
+        panel.appendChild(addEventBtn);
+
+        const successWrap = document.createElement("p");
+        const successLabel = document.createElement("label");
+        successLabel.textContent = "成功判定時間 [秒]:";
+        const successInput = document.createElement("input");
+        successInput.type = "text";
+        successInput.inputMode = "decimal";
+        successInput.value = squad.tSuccess ?? "180";
+        successInput.className = "input-t-success number-input";
+        makeSelectOnClick(successInput);
+        successLabel.appendChild(successInput);
+        successWrap.appendChild(successLabel);
+        panel.appendChild(successWrap);
+
+        squadPanels.appendChild(panel);
+    });
+
+    if (squadTabBar) {
+        squadTabBar.replaceChildren(...tabButtons, addSquadBtn);
+    }
+    setActiveSquad(Math.max(0, Math.min(activeIndex, safeSquads.length - 1)));
+}
+
+function collectState() {
+    const mode = document.querySelector('input[name="th-mode"]:checked')?.value || "hours";
+
+    return {
+        squads: readSquadsFromDOM(),
+        activeIndex: activeSquadIndex,
+        restartDelay: document.getElementById("restart-delay").value,
+        mode,
+        thresholdHours: document.getElementById("threshold-hours").value,
+        thresholdDetail: document.getElementById("threshold-detail").value,
+        fps: document.getElementById("fps").value,
+    };
+}
+
+function updateUrlState() {
+    const state = collectState();
+    const encoded = encodeURIComponent(JSON.stringify(state));
+    const url = new URL(window.location.href);
+    url.searchParams.set("state", encoded);
+    window.history.replaceState(null, "", url.toString());
+}
+
+function applyState(state) {
+    if (!state || typeof state !== "object") return false;
+
+    const squads = Array.isArray(state.squads) ? state.squads : [];
+    if (squads.length === 0) {
+        squadCounter = 0;
+        renderSquads([createSquadData(null, [{ p: 75, t: 10 }], "180")], 0);
+    } else {
+        squadCounter = squads.length;
+        renderSquads(
+            squads.map(s => createSquadData(s.name, s.events, s.tSuccess)),
+            Number.isInteger(state.activeIndex) ? state.activeIndex : 0
+        );
+    }
+
+    document.getElementById("restart-delay").value = state.restartDelay ?? "0";
+    document.getElementById("threshold-hours").value = state.thresholdHours ?? "1";
+    document.getElementById("threshold-detail").value = state.thresholdDetail ?? "1:00:00";
+    document.getElementById("fps").value = state.fps ?? "1";
+
+    const mode = state.mode === "detail" ? "detail" : "hours";
+    const modeInput = document.querySelector(`input[name="th-mode"][value="${mode}"]`);
+    if (modeInput) modeInput.checked = true;
+
+    return true;
+}
+
+function loadStateFromUrl() {
+    const url = new URL(window.location.href);
+    const raw = url.searchParams.get("state");
+    if (!raw) return false;
+
+    try {
+        const parsed = JSON.parse(decodeURIComponent(raw));
+        return applyState(parsed);
+    } catch {
+        return false;
+    }
+}
+
+addSquadBtn.addEventListener("click", () => {
+    const data = readSquadsFromDOM();
+    const newSquad = createSquadData(null, [{ p: "", t: "" }], "180");
+    data.push(newSquad);
+    renderSquads(data, data.length - 1);
 });
 
 const restored = loadStateFromUrl();
 if (!restored) {
-    addParamRow(75, 10);
+    renderSquads([createSquadData(null, [{ p: 75, t: 10 }], "180")], 0);
 }
 
-makeSelectOnClick(document.getElementById("t-success"));
 makeSelectOnClick(document.getElementById("restart-delay"));
 makeSelectOnClick(document.getElementById("threshold-hours"));
 makeSelectOnClick(document.getElementById("threshold-detail"));
@@ -185,44 +395,52 @@ let pyodideReady = (async () => {
     const pythonCode = `
 import numpy as np
 
-def prob_within_threshold_analytic(p_list, T_list, threshold, fps=30, restart=0):
-    p_list = np.array(p_list, dtype=float)
-    p_list *= 0.01
-    T_list = np.array(T_list, dtype=float)
-
-    T_frames = np.round(T_list * fps).astype(int)
-    threshold_f = int(round(threshold * fps))
-    restart_f = int(round(restart * fps))
-
-    T_fail = T_frames[:-1] + restart_f
-    T_succ = T_frames[-1]
-
-    if threshold_f < T_succ:
+def prob_within_threshold_multi(scenarios, threshold, fps=30, restart=0):
+    if not scenarios:
         return 0.0
 
-    q_succ = np.prod(p_list)
+    stage_params = []
+    total_min_frames = 0
 
-    q = []
-    prefix = 1.0
-    for p in p_list:
-        q.append(prefix * (1.0 - p))
-        prefix *= p
-    q.append(q_succ)
-    q = np.array(q, dtype=float)
+    restart_f = int(round(restart * fps))
+    for s in scenarios:
+        p_list = np.array(s["probs"], dtype=float) * 0.01
+        t_fail_list = np.array(s["times"], dtype=float)
+        success_time = float(s["success_time"])
 
-    max_T = threshold_f - T_succ
+        q_succ = np.prod(p_list)
+        q_fails = []
+        current_p = 1.0
+        for p in p_list:
+            q_fails.append(current_p * (1.0 - p))
+            current_p *= p
+        q_fails = np.array(q_fails)
 
-    x = np.zeros(max_T + 1, dtype=float)
-    x[0] = q_succ
+        t_fails = np.round(t_fail_list * fps).astype(int) + restart_f
+        stage_succ_frames = int(round(success_time * fps))
+        total_min_frames += stage_succ_frames
 
-    for t in range(1, max_T + 1):
-        s = 0.0
-        for Tn, qn in zip(T_fail, q):
-            if t >= Tn:
-                s += qn * x[t - Tn]
-        x[t] = s
+        stage_params.append({"q_succ": q_succ, "q_fails": q_fails, "t_fails": t_fails})
 
-    return float(x.sum())
+    threshold_f = int(round(threshold * fps))
+    max_waste_frames = threshold_f - total_min_frames
+    if max_waste_frames < 0:
+        return 0.0
+
+    num_stages = len(stage_params)
+    dp = np.zeros((num_stages, max_waste_frames + 1), dtype=float)
+    dp[0][0] = stage_params[0]["q_succ"]
+
+    for t in range(max_waste_frames + 1):
+        for i in range(num_stages):
+            params = stage_params[i]
+            for Tn, qn in zip(params["t_fails"], params["q_fails"]):
+                if t >= Tn:
+                    dp[i][t] += qn * dp[i][t - Tn]
+            if i > 0:
+                dp[i][t] += dp[i - 1][t] * params["q_succ"]
+
+    return float(dp[-1].sum())
 `;
     await pyodide.runPythonAsync(pythonCode);
     return pyodide;
@@ -235,39 +453,45 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
     out.textContent = "";
 
     try {
-        const rows = [...document.querySelectorAll(".param-row")];
-        if (rows.length === 0) throw new Error("イベント行を追加してください。");
+        const squads = readSquadsFromDOM();
+        if (squads.length === 0) throw new Error("部隊を追加してください。");
 
-        const pList = [];
-        const T_fail = [];
+        const scenarios = squads.map((squad, index) => {
+            if (!squad.events.length) {
+                throw new Error(`${squad.name} のイベント行を追加してください。`);
+            }
 
-        for (const row of rows) {
-            const p = Number(row.querySelector(".input-p").value);
-            const t = Number(row.querySelector(".input-t").value);
-            if (!Number.isFinite(p) || !Number.isFinite(t))
-                throw new Error("成功確率および判定時刻には数値を入力してください。");
+            const pList = [];
+            const tList = [];
 
-            pList.push(p);
-            T_fail.push(t);
-        }
+            for (const row of squad.events) {
+                const p = Number(row.p);
+                const t = Number(row.t);
+                if (!Number.isFinite(p) || !Number.isFinite(t)) {
+                    throw new Error(`${squad.name} の成功確率および判定時刻には数値を入力してください。`);
+                }
+                pList.push(p);
+                tList.push(t);
+            }
 
-        const T_succ = Number(document.getElementById("t-success").value);
-        if (!Number.isFinite(T_succ)) {
-            throw new Error("成功判定時間には数値を入力してください。");
-        }
+            const tSuccess = Number(squad.tSuccess);
+            if (!Number.isFinite(tSuccess)) {
+                throw new Error(`${squad.name} の成功判定時間には数値を入力してください。`);
+            }
+
+            const maxFailTime = Math.max(...tList);
+            if (tSuccess < maxFailTime) {
+                throw new Error(`${squad.name} の成功判定時間は、全てのイベントの判定時刻以上にしてください。`);
+            }
+
+            return { probs: pList, times: tList, success_time: tSuccess };
+        });
 
         const restartDelay = Number(document.getElementById("restart-delay").value);
         if (!Number.isFinite(restartDelay) || restartDelay < 0) {
             throw new Error("リスタート時間は 0 以上の数で指定してください。");
         }
 
-        // 成功判定が他のイベント時間より前にならないようにする
-        const maxFailTime = Math.max(...T_fail);
-        if (T_succ < maxFailTime) {
-            throw new Error("成功判定時間は、全てのイベントの判定時刻以上にしてください。");
-        }
-
-        // 閾値のモードを確認
         const mode = document.querySelector('input[name="th-mode"]:checked')?.value;
         let ticketCount = null;
         let thresholdSeconds = null;
@@ -289,11 +513,8 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
             throw new Error("fps は 1 より大きい数で指定してください。");
         }
 
-        const T_list = [...T_fail, T_succ];
-
         const pyodide = await pyodideReady;
-        pyodide.globals.set("p_list_js", pList);
-        pyodide.globals.set("T_list_js", T_list);
+        pyodide.globals.set("scenarios_js", scenarios);
         pyodide.globals.set("fps_js", fps);
         pyodide.globals.set("restart_js", restartDelay);
 
@@ -302,13 +523,21 @@ document.getElementById("calcBtn").addEventListener("click", async () => {
             const ticketSeconds = 3600;
             pyodide.globals.set("threshold_js", ticketSeconds);
             const pSingle = await pyodide.runPythonAsync(`
-prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js, restart_js)
+try:
+    scenarios = scenarios_js.to_py()
+except AttributeError:
+    scenarios = scenarios_js
+prob_within_threshold_multi(scenarios, threshold_js, fps_js, restart_js)
 `);
             prob = 1 - Math.pow(1 - pSingle, ticketCount);
         } else {
             pyodide.globals.set("threshold_js", thresholdSeconds);
             prob = await pyodide.runPythonAsync(`
-prob_within_threshold_analytic(p_list_js, T_list_js, threshold_js, fps_js, restart_js)
+try:
+    scenarios = scenarios_js.to_py()
+except AttributeError:
+    scenarios = scenarios_js
+prob_within_threshold_multi(scenarios, threshold_js, fps_js, restart_js)
 `);
         }
 

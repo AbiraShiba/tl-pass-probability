@@ -17,15 +17,12 @@
         </label>
     </p>
 
-    <div id="param-container"></div>
-    <button id="add-param-btn"> + 行を追加</button>
-
-    <p>
-        <label>
-            成功判定時間 [秒]:
-            <input id="t-success" class="number-input" type="text" inputmode="decimal" value="180" />
-        </label>
-    </p>
+    <div class="squad-area">
+        <div class="tab-bar" id="squad-tab-bar">
+            <button id="add-squad-btn" class="ghost-btn">+ 部隊を追加</button>
+        </div>
+        <div id="squad-panels"></div>
+    </div>
 
     <!-- 閾値の指定方法を2通り用意 -->
     <fieldset style="margin-top:1em;">
