@@ -357,11 +357,32 @@ function collectState() {
     };
 }
 
+function toBase64Url(str) {
+    const bytes = new TextEncoder().encode(str);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 1) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function fromBase64Url(base64Url) {
+    const normalized = base64Url.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+    const binary = atob(padded);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new TextDecoder().decode(bytes);
+}
+
 function updateUrlState() {
     const state = collectState();
-    const encoded = encodeURIComponent(JSON.stringify(state));
-    const url = new URL(window.location.href);
+    const encoded = toBase64Url(JSON.stringify(state));
+    const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set("state", encoded);
+    if (window.location.hash) url.hash = window.location.hash;
     window.history.replaceState(null, "", url.toString());
 }
 
@@ -404,7 +425,14 @@ function loadStateFromUrl() {
     if (!raw) return false;
 
     try {
-        const parsed = JSON.parse(decodeURIComponent(raw));
+        let json = "";
+        try {
+            json = fromBase64Url(raw);
+        } catch {
+            // Backward compatibility for old share URLs.
+            json = decodeURIComponent(raw);
+        }
+        const parsed = JSON.parse(json);
         return applyState(parsed);
     } catch {
         return false;
